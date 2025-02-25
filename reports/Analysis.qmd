@@ -1,0 +1,250 @@
+---
+title: "The Impact of Income and Substance Use on Health Outcomes in US Counties"
+subtitle: "Using Data from CHR 2023 "
+date: last-modified
+format: 
+  html:
+    toc: true
+    number-sections: true
+    date-format: iso
+    embed-resources: true
+    code-overflow: wrap
+    theme: default
+---
+
+```{r}
+
+knitr::opts_chunk$set(warning = FALSE)
+
+```
+
+
+```{r}
+#| message: false
+
+library(Hmisc)
+library(janitor)
+library(naniar)
+library(sessioninfo)
+library(car)
+library(mosaic)
+suppressPackageStartupMessages(library(here))
+library(gt)
+library(patchwork)
+library(broom)
+library(tidyverse)
+
+
+theme_set(theme_bw())
+knitr::opts_chunk$set(comment = NA)
+```
+
+# Data Ingest
+
+# Data Ingest
+
+```{r Data Task 1 Ingest the raw data}
+
+
+data_url <- "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2023_0.csv"
+
+chr_2023_raw <- read_csv(data_url, skip = 1, guess_max = 4000,show_col_types = FALSE)
+
+
+chr_2023_raw <- chr_2023_raw %>% filter(county_ranked == 1)
+
+dim(chr_2023_raw)
+
+
+```
+
+# State Selection
+
+The goal of the analysis will include all of the counties in the Unitied States of America. 
+
+```{r State Selection}
+
+
+chr_2023 <- chr_2023_raw %>% mutate(state = factor(state))
+
+chr_2023 %>% count(state)
+
+nrow(chr_2023)
+
+
+```
+
+There are 3082 total counties in this data set.
+
+
+# Variable Selection
+
+```{r variable selection}
+
+chr_2023 <- chr_2023 %>% select(fipscode, 
+                                county,
+                                state,
+                                county_ranked,
+                                v002_rawvalue,
+                                v063_rawvalue,
+                                v011_rawvalue,
+                                v009_rawvalue,
+                                v143_rawvalue) 
+
+
+```
+
+The selected variables for analysis include poor or fair health, median household income, adult obesity, adult smoking, and insufficient sleep. In Analysis 1, median household income serves as the predictor for the outcome variable poor or fair health. Analysis 2 examines adult smoking as a predictor of adult obesity, while Analysis 3 focuses on insufficient sleep as the primary variable of interest.
+
+# Variable Cleaning and Renaming
+
+The selected variables were renamed to align with the data dictionary:
+
+```{r variable renaming and cleaning}
+
+
+chr_2023 <- chr_2023 %>% rename(Poor_or_fair_health = v002_rawvalue,
+                    Median_household_income = v063_rawvalue,
+                    Adult_obesity = v011_rawvalue,
+                    adult_smoking = v009_rawvalue,
+                    insufficent_sleep = v143_rawvalue) %>% mutate(Poor_or_fair_health = Poor_or_fair_health * 100,
+                                                                  Median_household_income = Median_household_income / 1000,
+                                                                  Adult_obesity = Adult_obesity * 100,
+                                                                  adult_smoking = adult_smoking * 100,
+                                                                  insufficent_sleep = insufficent_sleep * 100)
+
+
+
+```
+
+All variables, except for Median Household Income, were multiplied by 100 to convert their values from proportions to percentages. Median Household Income was divided by 1,000 to express it in thousands of dollars for better readability.
+
+# Creating the Analysis 2 Predictor
+
+The percentage of adult smokers in a county will be categorized into three groups: "Low", "Medium", and "High" based on quantile cutoffs.
+* "Low": Counties in the bottom 40% (≤ 18.9%)
+* "Medium": Counties in the middle 20% (between 18.9% and 20.9%)
+* "High": Counties in the top 40% (≥ 20.9%)
+
+```{r creater analysis 2 factor}
+
+# Compute quantile cutoffs
+chr_2023 %>%
+  summarise(q40 = quantile(adult_smoking, c(0.4), na.rm = TRUE),  # Bottom 40% cutoff
+            q60 = quantile(adult_smoking, c(0.6), na.rm = TRUE))  # Top 40% cutoff
+
+# Categorize adult smoking into "Low", "Medium", and "High" groups
+chr_2023 <- chr_2023 %>%
+  mutate(adult_smoking_grp = case_when(
+    adult_smoking <= 18.9 ~ "Low",
+    adult_smoking > 18.9 & adult_smoking < 20.9 ~ "Medium",
+    adult_smoking >= 20.9 ~ "High")) %>%
+  mutate(adult_smoking_grp = factor(adult_smoking_grp, levels = c("Low", "Medium", "High")))
+
+# Count occurrences in each category
+chr_2023 %>% count(adult_smoking_grp)
+
+
+```
+
+The majority of counties fall into the 'Low' (1,233 counties) and 'High' (1,277 counties) smoking groups, while fewer counties (571) are classified as 'Medium.' Only one county has missing data.
+
+
+# Adding 2018 Data for the Analysis 3 Outcome
+
+Analysis will be done with the variable insufficient sleep to determine if the sleep quality has worsened for these counties between 2018 and 2023. The 2018 data is read in with read_csv() and is joined to the original data set using the function left join().
+
+```{r joining 2018 data}
+
+
+chr_2018_raw <- read_csv(suppressWarnings(here("data/raw/chr_2018.csv")), guess_max = 4000, show_col_types = FALSE)
+
+
+chr_2018_raw <- chr_2018_raw %>% mutate(fipscode = as.character(fipscode))
+
+chr_2018 <- chr_2018_raw %>% select(fipscode, v143_rawvalue)
+
+chr_2023 <- left_join(chr_2023, chr_2018, by = "fipscode")
+
+chr_2023 <- chr_2023 %>% rename(insufficent_sleep_2018 = v143_rawvalue) %>% 
+                         mutate(insufficent_sleep_2018 = insufficent_sleep_2018 * 100) %>% 
+                         rename(insufficent_sleep_2023 = insufficent_sleep)
+
+
+```
+
+
+# Arranging and Saving the Analytic Tibble
+
+```{r SavingTibbles}
+
+chr_2023 <- chr_2023 %>% select(fipscode, state, county, Poor_or_fair_health, Median_household_income, Adult_obesity, adult_smoking_grp, adult_smoking, insufficent_sleep_2023, insufficent_sleep_2018, county_ranked)
+
+write_csv(chr_2023, here("data/processed/chr_2023.csv"))
+saveRDS(chr_2023, here("data/processed/chr_2023.rds"))
+
+```
+
+# Print the Tibble
+
+The tibble is printed to confirm that:
+
+1. It is a tibble (instead of a data frame or another object type).
+2. All variables have the correct data types, ensuring compatibility with the analysis.
+
+```{r tibble printing}
+
+chr_2023
+
+```
+
+Expected data types:
+
+* `fipscode` and `county` → Character (chr)
+* `state` and `adult_smoking_grp` → Factor (fct)
+* All other quantitative variables → Double (dbl)
+
+# Numerical Summaries
+
+```{r numerical summary}
+
+describe(chr_2023)
+
+```
+
+# The Codebook
+
+The **chr_2023** tibble contains *3082* counties and *11* variables.
+
+|          Variable           |   Original    |        Role        |  NA | Distinct | Definition                                                                                              | Source                                         | Year(s) |
+|:------:|:------:|:------:|-------:|-------:|--------------------|--------|--------|
+|        **fipscode**         |      --       |         ID         |   0 |      611 | county's FIPS code                                                                                      | --                                             | --      |
+|          **state**          |      --       |         ID         |   0 |        6 | state postal abbreviation                                                                               | --                                             | --      |
+|         **county**          |      --       |         ID         |   0 |      529 | county name                                                                                             | --                                             | --      |
+|   **Poor_or_fair_health**   | v002_rawvalue |  Outcome Variable  |   0 |      169 | Percentage of adults reporting fair or poor health                                                      | The Behavioral Risk Factor Surveillance System | 2020    |
+| **Median_household_income** | v063_rawvalue | Predictor Variable |   0 |      608 | The median income of a household in thousands of dollars                                                | US Census Bureau                               | 2021    |
+|      **Adult_obesity**      | v011_rawvalue |  Outcome Variable  |   0 |      160 | Percentage of the adult population that reports a body mass index (BM) greater than or equal to 30kg/m2 | The Behavioral Risk Factor Surveillance System | 2020    |
+|    **adult_smoking_grp**    | adult_smoking | Predictor Variable | 119 |        2 | A binary variable that divides the percentage of adult smokers into high and low groups                 | The Behavioral Risk Factor Surveillance System | 2020    |
+|      **adult_smoking**      | v009_rawvalue | Predictor variable |   0 |      175 | Percentage of adult who are current smokers                                                             | The Behavioral Risk Factor Surveillance System | 2020    |
+| **insufficient_sleep_2023** | v143_rawvalue |  Outcome variable  |   0 |      138 | The percentage of adults who report fewer than 7 hours of sleep on average in 2023                      | The Behavioral Risk Factor Surveillance System | 2020    |
+| **insufficient_sleep_2018** | v143_rawvalue |  Outcome variable  |  60 |      551 | The percentage of adults who report fewer than 7 hours of sleep on average in 2018                      | The Behavioral Risk Factor Surveillance System | 2016    |
+|      **county_ranked**      |      --       |       Check        |   0 |        1 | Ensuring all values are 1                                                                               | --                                             | --      |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
