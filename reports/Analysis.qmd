@@ -1,15 +1,20 @@
 ---
 title: "The Impact of Income and Substance Use on Health Outcomes in US Counties"
-subtitle: "Using Data from CHR 2023 "
+subtitle: "Using Data from CHR 2023"
 date: last-modified
-format: 
+format:
   html:
+    css: styles.css
     toc: true
     number-sections: true
     date-format: iso
     embed-resources: true
     code-overflow: wrap
     theme: default
+---
+
+
+
 ---
 
 ```{r}
