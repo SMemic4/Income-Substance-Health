@@ -14,9 +14,6 @@ format:
 ---
 
 
-
----
-
 ```{r}
 
 knitr::opts_chunk$set(warning = FALSE)
@@ -43,8 +40,6 @@ library(tidyverse)
 theme_set(theme_bw())
 knitr::opts_chunk$set(comment = NA)
 ```
-
-# Data Ingest
 
 # Data Ingest
 
@@ -235,18 +230,26 @@ The **chr_2023** tibble contains *3082* counties and *11* variables.
 | **insufficient_sleep_2018** | v143_rawvalue |  Outcome variable  |  60 |      551 | The percentage of adults who report fewer than 7 hours of sleep on average in 2018                      | The Behavioral Risk Factor Surveillance System | 2016    |
 |      **county_ranked**      |      --       |       Check        |   0 |        1 | Ensuring all values are 1                                                                               | --                                             | --      |
 
+**Missingness Check**
 
 
+```{r missing check}
+gg_miss_var(chr_2023)
+```
 
 
+```{r}
+
+# Calculate the percentage of missing values for each variable
+chr_2023 %>%
+  summarise(missing_percent = mean(is.na(insufficent_sleep_2018)) * 100)
 
 
+```
 
+All quantitative variables have no missing data, except for `insufficient_sleep_2018`, which has approximately 10% missing values. However, this is well below the 20% threshold, making it unlikely to impact the analysis significantly.
 
-
-
-
-
+**Distinct Values Check**
 
 
 
