@@ -8,6 +8,9 @@
 
 # User-specific files
 .Ruserdata
+*.Rproj.user
+.Rhistory
+.RData
 
 # Example code in package build process
 *-Ex.R
@@ -47,3 +50,10 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# OS-specific metadata files (ignore these to prevent clutter)
+Thumbs.db         # Windows metadata file
