@@ -1,0 +1,36 @@
+# Session Information
+
+R version: 4.4.1  
+Date: 2025-02-25  
+Locale: English_United States.utf8  
+Time Zone: America/New_York  
+Pandoc Version: 3.1.11
+
+## Required Packages and Versions
+
+- base64enc==0.1-3
+- bit==4.0
+- broom==0.6.0
+- car==3.1-2
+- carData==3.0-5
+- data.table==1.16.0
+- digest==0.6.37
+- dplyr==1.1.4
+- forcats==1.0.0
+- ggplot2==3.5.1
+- gt==0.11.0
+- haven==2.13.0
+- janitor==2.2.0
+- labelled==2.13.0
+- lattice==0.22-6
+- mosaic==1.9.1
+- naniar==1.1.0
+- readr==2.1.5
+- rstatix==0.7.2
+- sessioninfo==1.2.2
+- stringr==1.5.1
+- tibble==3.2.1
+- tidyr==1.3.1
+- tidyverse==2.0.0
+- visdat==0.6.0
+- vroom==1.6.5

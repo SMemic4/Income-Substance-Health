@@ -125,6 +125,7 @@ All variables, except for Median Household Income, were multiplied by 100 to con
 # Creating the Analysis 2 Predictor
 
 The percentage of adult smokers in a county will be categorized into three groups: "Low", "Medium", and "High" based on quantile cutoffs.
+
 * "Low": Counties in the bottom 40% (≤ 18.9%)
 * "Medium": Counties in the middle 20% (between 18.9% and 20.9%)
 * "High": Counties in the top 40% (≥ 20.9%)
@@ -541,9 +542,7 @@ The Q-Q plots for the Low, Medium, and High Smoking groups assess whether the di
 
 For the Low Smoking group, the data mostly follows the normal distribution in the middle range but deviates at the lower and upper tails, indicating the presence of mild skewness or outliers. The Medium Smoking group exhibits a similar pattern, with some deviation in the tails, particularly in the upper end where counties with very high obesity rates are present. The High Smoking group shows the most noticeable deviation from normality, especially at the upper tail, where a cluster of counties has exceptionally high obesity rates.
 
-These deviations in the upper tails across all groups suggest that a small subset of counties has significantly higher obesity rates than what would be expected under normality. This could indicate the influence of additional factors such as socioeconomic status, physical activity levels, or healthcare access that contribute to obesity rates beyond smoking prevalence.
-
-Overall, while the core distributions of obesity rates within each smoking group are roughly normal, the presence of right-skewed data and outliers in the higher obesity ranges suggests that statistical tests assuming normality should be interpreted with caution. If necessary, data transformations or non-parametric tests may be considered for further analysis.
+These deviations in the upper tails across all groups suggest that a small subset of counties has significantly higher obesity rates than what would be expected under normality. This could indicate the influence of additional factors such as socioeconomic status, physical activity levels, or healthcare access that contribute to obesity rates beyond smoking prevalence. Overall, while the core distributions of obesity rates within each smoking group are roughly normal, the presence of right-skewed data and outliers in the higher obesity ranges suggests that statistical tests assuming normality should be interpreted with caution. If necessary, data transformations or non-parametric tests may be considered for further analysis.
 
 ## Model
 
@@ -611,12 +610,140 @@ Future research that could improve this analysis would be to incorporate additio
 
 ## Variables
 
+This analysis examines changes in insufficient sleep prevalence between 2018 and 2023 using a paired sample design. The dataset includes the percentage of adults reporting insufficient sleep in both years, with counties serving as the pairing variable to ensure that the comparison reflects within-county changes over time. Insufficient sleep is an age-adjusted quantitative variable representing the percentage of adults who report averaging fewer than seven hours of sleep per night. The data was collected through self-reported surveys, where participants responded to the question: “On average, how many hours of sleep do you get in a 24-hour period?”. Adults reporting fewer than seven hours were classified as experiencing insufficient sleep.
+
+This paired sample design allows for a precise comparison by controlling for county-level differences that could influence sleep patterns, such as demographics, local policies, or environmental factors. The primary statistical approach will be a paired t-test, which assesses whether there is a significant difference in insufficient sleep prevalence between 2018 and 2023.
+
+## Summaries
+
+```{r}
+
+slp <- chr_2023 %>% filter(complete.cases(insufficent_sleep_2023, insufficent_sleep_2018)) %>% select(fipscode:county, insufficent_sleep_2023, insufficent_sleep_2018)
+
+slp <- slp %>% mutate(sleep_diff = insufficent_sleep_2023 - insufficent_sleep_2018)
+
+sleep1 <- mosaic::favstats(~ insufficent_sleep_2023, data = slp)
+sleep2 <- mosaic::favstats(~ insufficent_sleep_2018, data = slp)
+sleep4 <- mosaic::favstats(~ sleep_diff, data = slp)
+sleep3 <- bind_rows(list(insufficent_sleep_2023 = sleep1, insufficent_sleep_2018 = sleep2,sleep_diff = sleep4 ))
+sleep3$Variable <- c("insufficent sleep 2023", "insufficent sleep 2018", "Sleep Difference" )
+sleep3 <- sleep3 %>% select(Variable, min:missing)
+sleep3 %>% gt() %>% fmt_number(decimals = 2)
+
+```
+
+
+The summary statistics provide insight into changes in insufficient sleep prevalence between 2018 and 2023 across 2,768 U.S. counties. The mean percentage of adults reporting insufficient sleep in 2023 was 34.55%, slightly higher than the 33.15% recorded in 2018. The median values show a similar pattern, increasing from 33.6% in 2018 to 34.6% in 2023, suggesting a slight overall increase in the prevalence of insufficient sleep. The standard deviation is slightly lower in 2023 (3.50) compared to 2018 (4.06), indicating that the distribution of sleep deprivation rates has become slightly more consistent over time.
+
+The computed sleep difference variable (2023 minus 2018) has a mean increase of 1.41 percentage points, with a range from -8.6 to 9.76. The negative values indicate that some counties experienced a reduction in insufficient sleep rates, while others saw an increase, with most changes clustering near zero. The standard deviation of 2.34 suggests that the magnitude of change varies across counties, though most changes remain within a few percentage points. These results suggest that, on average, insufficient sleep has become slightly more common between 2018 and 2023, but with considerable variability across counties. A paired t-test will be conducted to determine whether this observed increase is statistically significant.
+
+```{r}
+
+p1 <- slp %>% ggplot(aes(sample = sleep_diff)) +
+  geom_qq() +
+  geom_qq_line(col = "steelblue") +
+  theme(aspect.ratio = 1) +
+  labs(title = "Normal Q-Q Plot",
+       x = "Expectation under Standard Normal",
+       y = "Sleep 2023 - Sleep 2018") + theme_bw()
+
+
+p2 <- slp %>% ggplot(aes(x = sleep_diff)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15, fill = "steelblue", col = "black") +
+  stat_function(fun = dnorm, args = list(mean = mean(slp$sleep_diff, na.rm = TRUE),
+                                         sd = sd(slp$sleep_diff, na.rm = TRUE)),
+                col = "red", lwd = 1.5) +
+  labs(title = "Histogram of Sleep Difference",
+       subtitle = "Imposed with Normal Density Function",
+       x = "Change in Sleep Percentage",
+       y = "Density") + theme_bw() + scale_y_continuous(expand = c(0,0))
+
+
+p3 <- slp %>% ggplot(aes(x = sleep_diff, y = "")) +
+  geom_violin(fill = "ivory") +
+  geom_boxplot(fill = "steelblue", width = 0.5, outlier.size = 2, notch = TRUE) +
+  stat_summary(fun = "mean", geom = "point", shape = 23, size = 2, fill = "black") +
+  labs(title = "Boxplot of Sleep Difference",
+       x = "Change in Sleep Percentage",
+       y = "") + theme_bw()
+
+
+p1 + (p2 / p3 + plot_layout(heights = c(4,1))) +
+  plot_annotation(title = "Percent Change in Insufficent Sleep Between 2023 and 2018",
+                  subtitle = "n = 611 Counties",
+                  caption = "Source: 2023 and 2018 County Health Rankings")
+
+
+```
+
+The three visualizations show the distribution of changes in insufficient sleep prevalence between 2018 and 2023 across 551 counties. The Normal Q-Q Plot suggests that the differences in insufficient sleep percentages are approximately normally distributed, as most points closely follow the diagonal reference line, with only minor deviations at the extremes. This indicates that a paired t-test is appropriate for analyzing the differences between the two years.
+
+The histogram of sleep differences, overlaid with a normal density curve, further supports this observation. The distribution appears unimodal and symmetric, centered around zero, indicating that while some counties experienced increases in insufficient sleep prevalence, others saw decreases, with most changes clustering around a small positive shift. This aligns with previous summary statistics, which showed a mean increase of about 1.41 percentage points.
+
+The boxplot of sleep differences reveals the spread and presence of outliers. Most counties have sleep differences ranging from approximately -5 to +5 percentage points, with a few extreme values exceeding ±8 percentage points. The presence of mild outliers suggests that while most counties experienced small changes, a few had more dramatic shifts in sleep deprivation rates.Overall, these visualizations confirm that the distribution of sleep differences is approximately normal, justifying the use of parametric statistical tests such as a paired t-test to determine whether the observed mean difference is statistically significant.
 
 
 
+```{r}
+
+sleep_cor <- str_glue("Pearson correlation = ", round_half_up(cor(slp$insufficent_sleep_2018, slp$insufficent_sleep_2023), 3))
+
+ggplot(slp, aes(x = insufficent_sleep_2018, y = insufficent_sleep_2023)) + geom_point(size = 2) +
+  geom_smooth(method = "lm", formula = y ~ x, col = "red", se = TRUE) +
+  geom_smooth(method = "loess", formula = y~x, col = "steelblue", se = FALSE) + theme_bw() +
+  geom_text(label = sleep_cor, x = 27, y = 45 ) +
+  labs(title = "Association between Insufficent Sleep in 2018 and 2023",
+       subtitle = "Fitted with a Linear Model and Loess Regression Curves",
+       x = "Percentage of Insufficent Sleep in 2018",
+       caption = "Source: 2023 County Health Rankings",
+       y = "Percentage of Insufficent Sleep in 2023")
+
+```
+
+The scatterplot shows the association between insufficient sleep prevalence in 2018 and 2023 across U.S. counties, with both a linear regression model (red line) and a loess regression curve (blue line) fitted to the data. The Pearson correlation coefficient of 0.818 indicates a strong positive linear relationship, suggesting that counties with higher insufficient sleep percentages in 2018 tended to also have higher insufficient sleep percentages in 2023. The linear regression model (red line) closely follows the trend of the data, showing a consistent, positive association between the two years. The loess curve (blue line) aligns well with the linear model, suggesting that the relationship remains approximately linear across the range of insufficient sleep percentages, with no major deviations or non-linear trends.
+
+Despite the strong correlation, there is some spread in the data, indicating county-level variability in sleep trends. While most counties followed a similar trajectory, some experienced larger increases or decreases in insufficient sleep prevalence than expected. This variation could be influenced by differences in public health policies, socioeconomic conditions, or lifestyle factors across regions.
+
+The strong correlation suggests that insufficient sleep trends are persistent over time, with counties that had high sleep deprivation rates in 2018 continuing to report high rates in 2023. However, individual county-level differences highlight the need for further exploration into factors driving changes in sleep behavior over time.
+
+## Model
+
+```{r}
+
+t.test(slp$sleep_diff, data = smoke, conf.int = TRUE, conf.level = 0.90) %>% tidy() %>% gt() %>% fmt_number(decimals = 2)
+
+```
 
 
+A one-sample t-test was conducted to determine whether the mean change in insufficient sleep prevalence between 2018 and 2023 was statistically significant. The test produced a highly significant result (p < 0.001), indicating that the observed mean difference is unlikely to be due to random chance. The estimated mean difference in insufficient sleep percentages is 1.41 percentage points, meaning that, on average, counties experienced a 1.41% increase in the proportion of adults reporting insufficient sleep from 2018 to 2023. The 90% confidence interval [1.33, 1.48] suggests that the true mean difference in the population likely falls within this range, further reinforcing the significance of the result.
 
+The t-statistic of 31.58 with 2,767 degrees of freedom is very large, providing strong evidence against the null hypothesis that there is no change in sleep deprivation rates over time. Since the test was two-sided, it accounts for the possibility of both increases and decreases, though in this case, the positive estimate confirms an upward trend in insufficient sleep prevalence.
+
+These findings provide statistically significant evidence that insufficient sleep rates have increased in U.S. counties between 2018 and 2023. While the observed increase of 1.41 percentage points may seem small, it represents a consistent trend across counties, potentially reflecting broader societal changes such as increased stress levels, lifestyle shifts, or declining sleep hygiene practices.
+
+
+## Conclusions
+
+
+This analysis aimed to determine whether there was a significant change in the percentage of adults reporting insufficient sleep across the same U.S. counties between 2018 and 2023. The results indicate a statistically significant increase in insufficient sleep prevalence over this period. The median percentage of adults reporting insufficient sleep in 2023 was 34.6% (IQR: 3.6), compared to 33.6% in 2018 (IQR: 4.86), suggesting a slight but consistent upward trend. A paired t-test confirmed a mean increase of 1.41 percentage points, with a 90% confidence interval of [1.33, 1.48], providing strong evidence that insufficient sleep rates have risen in U.S. counties over time.
+
+One limitation of this analysis is missing data that is likely "Missing Not at Random" (MNAR). Notably, all 58 counties in California lacked insufficient sleep data for 2018, meaning California was entirely excluded from the analysis. Since California represents a significant portion of the U.S. population, its absence may introduce regional bias into the findings.
+
+A potential next step for future research would be to explore underlying factors contributing to changes in sleep deprivation, such as economic stress, work-life balance, increased screen time, or public health interventions. Additionally, controlling for confounding variables—such as income levels, employment status, and regional differences in healthcare access—could provide deeper insight into the drivers of increasing sleep deprivation. Further analysis could also compare urban vs. rural counties to assess whether geographic location influences sleep trends over time.
+
+# Session Information
+
+```{r}
+
+# quarto::quarto_render("Analysis.qmd", output_format = "pdf")
+
+```
+
+
+```{r}
+session_info()
+```
 
 
 
