@@ -35,6 +35,7 @@ library(gt)
 library(glue)
 library(patchwork)
 library(broom)
+library(rstatix)
 library(tidyverse)
 
 
@@ -415,14 +416,24 @@ The Q-Q Plot (right) evaluates the normality of residuals, a key assumption for 
 
 Overall, while the model performs reasonably well, the presence of slight heteroscedasticity and minor non-normality suggests that additional diagnostic tests (such as other transformations or robust regression techniques) may be useful to further improve model fit and reliability.
 
+
+
 ```{r}
 
-chr_2023_aug <- augment(m1, data = chr_2023)
-cc_high <- chr_2023_aug %>% select(state,county, Poor_or_fair_health, Median_household_income, .fitted, .resid, .std.resid) %>% mutate(abs_resid = abs(.resid))
-cc_high %>% arrange(desc(abs_resid)) %>% head(n = 2)
+chr_2023_aug <- augment(m1, newdata = chr_2023)
+
+chr_2023_aug %>% select(state, county, Poor_or_fair_health, Median_household_income, .fitted, .resid) %>%
+  mutate(std_resid_manual = .resid / sd(.resid, na.rm = TRUE)) -> cc_high
+
+cc_high %>% arrange(desc(std_resid_manual)) %>% head(n = 2)
+
+
+
 ```
 
-The counties with the largest absolute residual values were Dallam County in and Presidio County both in the state of Texas. Their residuals values were 0.564 and 0.492 respectively.
+
+The counties with the largest absolute residual values were East Carroll Parish County in and Holmes County both in the state of Texas. Their residuals values were 3.179016 and 2.927130 respectively.
+
 
 ## Conclusions
 
@@ -431,12 +442,178 @@ This analysis aimed to determine whether counties with higher median household i
 A key limitation arises from the residuals vs. fitted plot, which indicates some heteroscedasticity, meaning the variance of residuals is not constant across income levels. This is particularly noticeable at the lower and upper ends of the income distribution, suggesting that the predictive power of the model may be weaker for very low- or high-income counties. Additionally, the Q-Q plot shows minor deviations from normality, with a few high-leverage outliers. These extreme residuals suggest that certain counties have significantly different actual health outcomes than what the model predicts, potentially due to unmeasured regional or policy differences.
 
 To improve the model's predictive power and address heteroscedasticity, future analysis could explore alternative transformations, such as:
+
 * A generalized linear model (GLM) with a different link function, which may better capture the relationship.
 * Additional socioeconomic predictors, such as education levels, healthcare access, or employment rates, to enhance explanatory power.
 * A weighted regression approach, where counties with extreme values contribute proportionally less to the model.
 * Robust regression techniques, which reduce the influence of outliers and improve model stability.
 
 Despite these limitations, the analysis provides strong evidence that higher household incomes are associated with better self-reported health outcomes, reinforcing the broader understanding of the relationship between economic conditions and public health.
+
+# Analysis 2
+
+## Variables
+
+`adult_smoking` is an age-adjusted quantitative variable that measures the percentage of adults who are current smokers. The data was collected through surveys, where respondents were asked, "Do you now smoke cigarettes every day, some days, or not at all?" Individuals who responded "every day" or "some days" were classified as smokers. The analysis follows an independent sample design, where each county is categorized into one of two smoking groups, and the groups are then compared against one another. The Adult Smoking Group variable is a categorical variable that classifies counties into Low, medium, and High smoking prevalence groups:
+
+* Low Smoking Group: Counties in the bottom 40% of adult smoking prevalence.
+* High Smoking Group: Counties in the top 40% of adult smoking prevalence.
+* Middle 20% Excluded: Counties with adult smoking rates in the middle 20% 
+
+`Adult_Obesity` is an age-adjusted quantitative variable that measures the percentage of the adult population that reported a body mass index (BMI) greater than or equal to 30 kg/m\^2. The data was collected through self-reported surveys, where adults reported their height and weight, from which BMI was calculated.
+
+
+## Summaries
+
+
+```{r}
+
+smoke <- chr_2023 %>% filter(complete.cases(Adult_obesity, adult_smoking, adult_smoking_grp)) %>% select(fipscode:county, Adult_obesity, adult_smoking, adult_smoking_grp)
+
+mosaic::favstats(Adult_obesity ~ adult_smoking_grp, data = smoke) %>% gt() %>% fmt_number(decimals = 2)
+
+```
+
+
+The table provides descriptive statistics for adult smoking prevalence across three county-level groups: Low, Medium, and High Smoking Counties. These groups were determined by ranking counties based on their smoking rates, with the bottom 40% classified as Low Smoking, the top 40% as High Smoking, and the middle 20% as Medium Smoking.
+
+Counties in the Low Smoking group (n = 1,233) have smoking rates ranging from 17.6% to 49.0%, with a median of 33.6% and an average smoking rate of 33.02%. The standard deviation of 4.42 suggests moderate variability in smoking rates within this group. The Medium Smoking group (n = 571) has smoking rates between 25.6% and 46.7%, with a median of 36.5% and an average of 36.49%. The standard deviation of 3.04 indicates that smoking rates in this group are more tightly clustered compared to the Low and High groups. The High Smoking group (n = 1,277) consists of counties where adult smoking rates range from 28.6% to 53.2%, with a median of 39.1% and an average smoking rate of 39.31%. This group has the lowest standard deviation (3.15), suggesting that smoking rates are relatively consistent within counties classified as high-smoking.
+
+Overall, the distribution of smoking rates is well separated across the three groups, with distinct median and mean values. This categorization ensures a meaningful comparison between counties with significantly different smoking prevalence rates while excluding the middle 20% to strengthen group differences.
+
+```{r}
+
+smoke %>% ggplot(aes(x = adult_smoking_grp, y = Adult_obesity)) + geom_violin(fill = "ivory") + 
+  geom_boxplot(width = 0.3, fill = "steelblue", outlier.size = 2, notch = TRUE) +
+  stat_summary(fun = "mean", geom = "point", shape = 23, size = 2, fill = "black") +
+  labs(title = "Adult Obesity Rates for Adult Smoker Groups",
+       subtitle = "Data from 611 Counties",
+       x = "Smoking Group",
+       y = "Adult Obesity Percentage",
+       caption = "Source: 2023 County Health Rankings") + coord_flip() + theme_bw()
+
+```
+
+The violin plot illustrates the distribution of adult obesity rates across three smoking groups (Low, Medium, and High Smoking Counties), providing insight into the relationship between smoking prevalence and obesity. The plot reveals a general trend where counties with higher smoking rates tend to have higher median obesity rates compared to those with lower smoking rates. This supports the hypothesis that lower smoking prevalence may be associated with higher obesity rates, potentially due to nicotine’s appetite-suppressing effects.
+
+The High Smoking group has the highest median obesity rate, approximately 38-40%, with a wide spread of values, indicating substantial variation in obesity rates among high-smoking counties. The Medium Smoking group shows a slightly lower median obesity rate with moderate variability, while the Low Smoking group has the lowest median obesity rate, around 32-34%, and a narrower distribution, suggesting more consistency in obesity rates among counties with lower smoking prevalence.
+
+Outliers are present in all groups, with some counties showing extremely low (<20%) or high (>50%) obesity rates, indicating that additional factors such as diet, socioeconomic status, and healthcare access may contribute to obesity rates beyond smoking prevalence alone.
+
+Overall, the data suggest a positive association between smoking prevalence and obesity rates, where counties with higher smoking rates tend to have higher obesity rates. However, given the overlap between groups, further statistical testing is necessary to determine whether these differences are statistically significant and to control for potential confounding variables that may influence obesity levels across counties.
+
+
+
+```{r}
+
+p1 <- smoke %>% filter(adult_smoking_grp == "Low") %>% ggplot(aes(sample = Adult_obesity)) +
+  geom_qq() +
+  geom_qq_line(col = "red") + 
+  theme(aspect.ratio = 1) +
+  labs(title = "Low Smoking Group",
+       x = "Expectation for Standard Normal ",
+       y = "Adult Obesity Percentage")
+
+p2 <- smoke %>% filter(adult_smoking_grp == "Medium") %>% ggplot(aes(sample = Adult_obesity)) +
+  geom_qq() +
+  geom_qq_line(col = "red") + 
+  theme(aspect.ratio = 1) +
+  labs(title = "Medium Smoking Group",
+       x = "Expectation for Standard Normal ",
+       y = "Adult Obesity Percentage")
+
+
+p3 <- smoke %>% filter(adult_smoking_grp == "High") %>% ggplot(aes(sample = Adult_obesity)) +
+  geom_qq() +
+  geom_qq_line(col = "red") + 
+  theme(aspect.ratio = 1) +
+  labs(title = "High Smoking Group",
+       x = "Expectation for Standard Normal ",
+       y = "Adult Obesity Percentage")
+
+p1 + p2 + p3
+
+
+```
+
+
+The Q-Q plots for the Low, Medium, and High Smoking groups assess whether the distribution of adult obesity percentages follows a normal distribution within each smoking category. In an ideal normal distribution, the data points would align closely along the 45-degree reference line (red line).
+
+For the Low Smoking group, the data mostly follows the normal distribution in the middle range but deviates at the lower and upper tails, indicating the presence of mild skewness or outliers. The Medium Smoking group exhibits a similar pattern, with some deviation in the tails, particularly in the upper end where counties with very high obesity rates are present. The High Smoking group shows the most noticeable deviation from normality, especially at the upper tail, where a cluster of counties has exceptionally high obesity rates.
+
+These deviations in the upper tails across all groups suggest that a small subset of counties has significantly higher obesity rates than what would be expected under normality. This could indicate the influence of additional factors such as socioeconomic status, physical activity levels, or healthcare access that contribute to obesity rates beyond smoking prevalence.
+
+Overall, while the core distributions of obesity rates within each smoking group are roughly normal, the presence of right-skewed data and outliers in the higher obesity ranges suggests that statistical tests assuming normality should be interpreted with caution. If necessary, data transformations or non-parametric tests may be considered for further analysis.
+
+## Model
+
+Due to the data does not following a normal distribution due to having some significant skew in both groups a non-parametric test will be used. Variation will also be checked for both groups.
+
+```{r}
+
+smoke %>% group_by(adult_smoking_grp) %>% summarise(n = n(), Variance = var(Adult_obesity)) 
+
+```
+
+The variance of adult obesity rates was calculated for each smoking group. The Low Smoking group had the highest variance (19.50), indicating greater variability in obesity rates among counties with lower smoking prevalence. In contrast, the Medium (9.27) and High (9.93) Smoking groups had much lower variances, suggesting more consistent obesity rates in counties with moderate-to-high smoking prevalence. The notable difference in variance between the Low Smoking group and the other two groups further justifies the use of Welch’s T-test, which does not assume equal variances.
+
+Since the data does not follow a normal distribution, as indicated by the Q-Q plots, and the variance differs between groups, a Welch's ANOVA will be used instead of the standard . Welch's ANOVA is more appropriate in cases where heteroscedasticity (unequal variances) exists across groups, ensuring more reliable statistical inference. These findings suggest that obesity rates are more variable in counties with lower smoking rates, whereas counties with higher smoking prevalence tend to have more uniform obesity levels. Further analysis will assess whether the observed differences in means are statistically significant.
+
+
+
+```{r}
+ 
+anova_results <- oneway.test(Adult_obesity ~ adult_smoking_grp, 
+                             data = smoke, 
+                             var.equal = FALSE)  # Welch’s ANOVA
+
+
+anova_results
+
+
+```
+The results indicate a highly significant effect (F = 850.15, p < 2.2e-16), suggesting that at least one group’s mean obesity rate differs significantly from the others. Since the p-value is far below 0.05, we reject the null hypothesis that all groups have the same mean obesity rate. However, Welch’s ANOVA does not specify which groups differ from each other, so we need to perform post hoc comparisons to determine where the significant differences lie.
+
+
+To further investigate the differences in means and obtain confidence intervals, we can use the Games-Howell post hoc test, which is suitable for datasets with unequal variances.
+
+```{r}
+
+games_howell_results <- games_howell_test(Adult_obesity ~ adult_smoking_grp, data = smoke)
+
+games_howell_results %>% gt() %>% fmt_number(decimals = 2)
+
+
+```
+
+
+The results indicate that all three pairwise comparisons (Low vs. Medium, Low vs. High, and Medium vs. High Smoking Groups) are statistically significant (p < 0.001 across all comparisons). The Medium Smoking group has an average adult obesity rate that is 3.46 percentage points higher than the Low Smoking group. The 95% confidence interval [3.04, 3.88] confirms this difference is statistically significant. The High Smoking group has an average obesity rate that is 6.29 percentage points higher than the Low Smoking group, indicating a stronger difference than the previous comparison. The 95% confidence interval [5.93, 6.65] further supports this finding. The High Smoking group has an average obesity rate that is 2.82 percentage points higher than the Medium Smoking group. The 95% confidence interval [2.46, 3.19] suggests a smaller but still significant difference.
+
+These findings suggest that smoking prevalence is positively associated with obesity rates, though further research is needed to explore underlying causal mechanisms such as socioeconomic factors, diet, or physical activity levels.
+
+## Conclusions
+
+This analysis aimed to determine whether counties in the U.S. with higher smoking prevalence are associated with lower or higher obesity rates among adults. Contrary to the initial hypothesis that higher smoking rates would correlate with lower obesity rates, the results indicate the opposite trend—counties with a higher percentage of adult smokers tend to have higher obesity rates.
+
+Using Welch’s ANOVA, a statistically significant difference (p < 2.2e-16) in adult obesity rates across smoking groups was observed. Games-Howell post hoc comparisons further confirmed that all group differences were significant:
+
+* Medium Smoking counties had an obesity rate 3.46 percentage points higher than Low Smoking counties.
+* High Smoking counties had an obesity rate 6.29 percentage points higher than Low Smoking counties.
+* High Smoking counties also had an obesity rate 2.82 percentage points higher than Medium Smoking counties.
+
+These findings suggest a positive association between smoking prevalence and obesity rates, challenging the assumption that higher smoking rates might contribute to lower obesity levels due to nicotine’s appetite-suppressing effects.
+
+While this analysis provides evidence of a statistical relationship, several limitations must be considered. Although data was collected from all U.S. counties, state-level differences in policies, healthcare access, and socioeconomic conditions could still introduce variability in the results. The relationship between smoking and obesity may differ based on urban vs. rural settings, state regulations on tobacco use, or regional dietary patterns, which were not explicitly controlled for in this analysis. Additionally, the data was collected via self-reported surveys, which introduces potential biases such as voluntary response bias, where individuals choosing to participate may not be fully representative of the broader population. Underreporting or overreporting behaviors in self-reported health metrics could also affect the accuracy of the results.
+
+Future research that could improve this analysis would be to incorporate additional variables, such as income levels, physical activity rates, and healthcare access, to better understand the mechanisms driving the observed association between smoking prevalence and obesity rates. Future studies could also explore whether the relationship differs between urban and rural counties or if state-level policy interventions (such as smoking bans or taxation) influence the trends observed in this study.
+
+# Analysis 3
+
+## Variables
+
+
+
+
 
 
 
